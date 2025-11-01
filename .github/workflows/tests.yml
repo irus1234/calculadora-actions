@@ -1,11 +1,17 @@
 name: CI - Calculadora
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
-
     steps:
       - name: Descargar el código
         uses: actions/checkout@v4
@@ -16,7 +22,35 @@ jobs:
           python-version: "3.11"
 
       - name: Instalar dependencias
-        run: pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Ejecutar pruebas
         run: pytest -v
+
+  deploy:
+    # Solo despliega si: 1) pasaron los tests  2) es un PUSH a main (no PR)
+    needs: test
+    if: ${{ needs.test.result == 'success' && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: produccion
+    steps:
+      - name: Verificar secret
+        run: |
+          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK }}" ]; then
+            echo "Falta el secret RENDER_DEPLOY_HOOK en Settings > Secrets and variables > Actions"; exit 1
+          fi
+
+      - name: Disparar deploy en Render (Deploy Hook)
+        run: |
+          set -e
+          # Llama al Deploy Hook; Render hace build + release
+          HTTP_CODE=$(curl -s -o /tmp/resp.json -w "%{http_code}" -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}")
+          echo "HTTP_CODE=$HTTP_CODE"
+          echo "Respuesta:"
+          cat /tmp/resp.json
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "El hook respondió código $HTTP_CODE"; exit 1
+          fi
