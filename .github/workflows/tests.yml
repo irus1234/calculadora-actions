@@ -30,7 +30,7 @@ jobs:
         run: pytest -v
 
   deploy:
-    # Solo despliega si: 1) pasaron los tests  2) es un PUSH a main (no PR)
+    # Solo despliega si: 1) pasaron los tests  2) es un PUSH a main
     needs: test
     if: ${{ needs.test.result == 'success' && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
